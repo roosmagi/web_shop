@@ -1,6 +1,8 @@
 const Product = require('../models/product')
 const Cart = require('../models/cart')
 const { where } = require('sequelize')
+const Order = require('../models/order')
+const OrderItems = require('../models/order-items')
 
 class shopController {
     async getallProducts(req, res) {
@@ -72,6 +74,56 @@ class shopController {
     await userCart.removeProduct(cartProducts[0]);
 
     res.status(200).json({ message: "Product removed from cart" });
+    }
+
+    async OrderItems(req, res) {
+        const userId = req.user.id;
+        const userCart = await req.user.getCart();
+        const cartItem = await userCart.getProducts({
+            attributes: ['id'],
+            through: { attributes: ['quantity'] }  
+        });
+
+        if (cartItem.length === 0) {
+            return res.status(400).json({error: 'Cart is empty!'});
+        } 
+
+        const orderItems = cartItem.map((cartItem) => {
+            return {
+                productId: cartItem.id,
+                quantity: cartItem.cartItem ? cartItem.cartItem.quantity : 0
+            } 
+        });
+
+        const newOrder = await Order.create({ userId });
+
+        for (const item of orderItems) {
+            await OrderItems.create({ orderId: newOrder.id, ...item });       
+          }
+
+          return res.status(201).json({ message: "Order created!", newOrder });
+    } 
+
+    async viewOrderedItems(req, res) {
+        const userId = req.user.id;   
+        const orderedItems = await Order.findAll({
+          where: { userId },
+          include: [
+            {
+              model: OrderItems,
+              as: "orderItems",
+              include: [
+                {
+                  model: Product,
+                  as: "product",
+                  attributes: ["id", "title"],       
+                },         
+              ],       
+            },         
+          ],   
+        });
+
+        res.status(201).json({ orders: orderedItems });
     }
 } 
 
